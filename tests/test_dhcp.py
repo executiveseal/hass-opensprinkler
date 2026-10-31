@@ -14,8 +14,8 @@ pytest.importorskip("pytest_homeassistant_custom_component")
 
 try:
     from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
-except ImportError:  # Home Assistant < 2025.1
-    from homeassistant.components.dhcp import DhcpServiceInfo
+except ImportError:  # Home Assistant < 2025.1; the flow only reads these fields
+    from types import SimpleNamespace as DhcpServiceInfo
 
 OLD_IP = "192.168.1.10"
 NEW_IP = "192.168.1.50"
@@ -116,9 +116,7 @@ async def test_dhcp_same_ip_does_nothing(hass, enable_custom_integrations):
     """A sighting at the configured IP does not contact the controller."""
     entry = mock_entry(hass)
 
-    with patch(
-        "custom_components.opensprinkler.config_flow.OpenSprinkler"
-    ) as mock_api:
+    with patch("custom_components.opensprinkler.config_flow.OpenSprinkler") as mock_api:
         result = await start_dhcp(hass, ip=OLD_IP)
 
     assert result["type"] is FlowResultType.ABORT
@@ -138,9 +136,7 @@ async def test_dhcp_leaves_hostname_urls_alone(hass, enable_custom_integrations,
     """Hostname and cloud URLs are never rewritten to an IP."""
     entry = mock_entry(hass, url=url)
 
-    with patch(
-        "custom_components.opensprinkler.config_flow.OpenSprinkler"
-    ) as mock_api:
+    with patch("custom_components.opensprinkler.config_flow.OpenSprinkler") as mock_api:
         result = await start_dhcp(hass)
 
     assert result["type"] is FlowResultType.ABORT
@@ -184,9 +180,7 @@ async def test_dhcp_unknown_mac(hass, enable_custom_integrations):
     """A MAC with no configured entry does not start a setup flow."""
     entry = mock_entry(hass)
 
-    with patch(
-        "custom_components.opensprinkler.config_flow.OpenSprinkler"
-    ) as mock_api:
+    with patch("custom_components.opensprinkler.config_flow.OpenSprinkler") as mock_api:
         result = await start_dhcp(hass, mac="112233445566")
 
     assert result["type"] is FlowResultType.ABORT
