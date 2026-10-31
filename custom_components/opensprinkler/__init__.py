@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from datetime import timedelta
 
 import async_timeout
@@ -17,6 +18,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, format_mac
 from homeassistant.helpers.entity_platform import async_get_platforms
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.service import entity_service_call
@@ -72,6 +74,18 @@ PLATFORMS = [
 ]
 TIMEOUT = 10
 MAX_CONSECUTIVE_UPDATE_FAILURES = 3
+
+
+def normalize_mac(value: str | None) -> str | None:
+    """Return a MAC as aa:bb:cc:dd:ee:ff from any separator style, else None.
+
+    Accepts entry unique IDs (aa_bb_cc_dd_ee_ff), DHCP MACs (aabbccddeeff) and
+    controller API MACs (AA:BB:CC:DD:EE:FF).
+    """
+    hex_digits = re.sub(r"[^0-9a-f]", "", (value or "").lower())
+    if len(hex_digits) != 12:
+        return None
+    return format_mac(hex_digits)
 
 
 class OpenSprinklerDataUpdater:
@@ -327,7 +341,7 @@ class OpenSprinklerEntity(RestoreEntity):
         firmware = controller.firmware_version_name or "Unknown"
         firmware += f" ({controller.firmware_minor_version})"
 
-        return {
+        info = {
             "identifiers": {(DOMAIN, slugify(self._entry.unique_id))},
             "name": self._name,
             "manufacturer": "OpenSprinkler",
@@ -335,6 +349,13 @@ class OpenSprinklerEntity(RestoreEntity):
             "model": model,
             "sw_version": firmware,
         }
+
+        # Registering the MAC lets DHCP discovery report the controller's new IP.
+        mac = normalize_mac(self._entry.unique_id)
+        if mac:
+            info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
+
+        return info
 
     @property
     def should_poll(self):

@@ -1,5 +1,6 @@
 """Config flow for OpenSprinkler integration."""
 
+import ipaddress
 import logging
 from typing import Any
 
@@ -18,8 +19,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import slugify
 from pyopensprinkler import Controller as OpenSprinkler
 from pyopensprinkler import OpenSprinklerAuthError, OpenSprinklerConnectionError
+from yarl import URL
 
+from . import normalize_mac
 from .const import DEFAULT_NAME, DEFAULT_VERIFY_SSL, DOMAIN
+
+try:
+    from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
+except ImportError:  # Home Assistant < 2025.1
+    from homeassistant.components.dhcp import DhcpServiceInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -232,6 +240,62 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reconfigure_mac",
             data_schema=RECONFIGURE_MAC_SCHEMA,
             errors=errors,
+        )
+
+    async def async_step_dhcp(self, discovery_info: DhcpServiceInfo) -> FlowResult:
+        """Follow a configured controller to the new IP address DHCP gave it.
+
+        Only entries whose URL host is an IP address are updated; hostnames and
+        cloud (OTC) URLs are left alone. The new address must answer as the
+        same controller before the entry is changed.
+        """
+        mac = normalize_mac(discovery_info.macaddress)
+        entry = next(
+            (
+                entry
+                for entry in self._async_current_entries(include_ignore=False)
+                if mac is not None and normalize_mac(entry.unique_id) == mac
+            ),
+            None,
+        )
+        if entry is None:
+            return self.async_abort(reason="not_supported")
+
+        await self.async_set_unique_id(entry.unique_id)
+
+        url = URL(entry.data[CONF_URL])
+        try:
+            ipaddress.ip_address(url.host or "")
+        except ValueError:
+            return self.async_abort(reason="already_configured")
+        if url.host == discovery_info.ip:
+            return self.async_abort(reason="already_configured")
+
+        new_url = str(url.with_host(discovery_info.ip))
+        opts = {
+            "session": async_get_clientsession(self.hass),
+            "verify_ssl": entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+        }
+        try:
+            controller = OpenSprinkler(new_url, entry.data[CONF_PASSWORD], opts)
+            await controller.refresh()
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.debug("Controller did not answer at %s", new_url, exc_info=True)
+            return self.async_abort(reason="cannot_connect")
+
+        if (
+            controller.mac_address is not None
+            and normalize_mac(controller.mac_address) != mac
+        ):
+            return self.async_abort(reason="wrong_device")
+
+        _LOGGER.info(
+            "OpenSprinkler controller moved from %s to %s", url.host, discovery_info.ip
+        )
+        return self.async_update_reload_and_abort(
+            entry,
+            data_updates={CONF_URL: new_url},
+            reason="already_configured",
         )
 
 

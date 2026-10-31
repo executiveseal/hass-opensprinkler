@@ -3,6 +3,8 @@
   "config": {
     "abort": {
       "already_configured": "Device is already configured",
+      "cannot_connect": "Failed to connect",
+      "not_supported": "This device is not a configured OpenSprinkler controller",
       "reauth_successful": "Re-authentication was successful",
       "reconfigure_successful": "Reconfiguration was successful",
       "wrong_device": "This URL belongs to a different OpenSprinkler controller"
