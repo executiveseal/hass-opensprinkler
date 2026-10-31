@@ -1,8 +1,10 @@
 """Config flow for OpenSprinkler integration."""
 
+from __future__ import annotations
+
 import ipaddress
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from aiohttp.client_exceptions import InvalidURL
@@ -24,10 +26,8 @@ from yarl import URL
 from . import normalize_mac
 from .const import DEFAULT_NAME, DEFAULT_VERIFY_SSL, DOMAIN
 
-try:
+if TYPE_CHECKING:
     from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
-except ImportError:  # Home Assistant < 2025.1
-    from homeassistant.components.dhcp import DhcpServiceInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -290,7 +290,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="wrong_device")
 
         _LOGGER.info(
-            "OpenSprinkler controller moved from %s to %s", url.host, discovery_info.ip
+            "OpenSprinkler controller moved from %s to %s",
+            url.host,
+            discovery_info.ip,
         )
         return self.async_update_reload_and_abort(
             entry,
